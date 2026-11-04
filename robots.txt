@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://tremdobotanico.com.br/sitemap.xml
