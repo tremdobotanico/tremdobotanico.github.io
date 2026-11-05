@@ -5,7 +5,7 @@ ICAL_ESTUDIO_AIRBNB, ICAL_ESTUDIO_BOOKING, ICAL_KITNET_AIRBNB, ICAL_KITNET_BOOKI
 Grava só as noites ocupadas, sem nome de hóspede nem valores.
 Se um calendário falhar, mantém os dados anteriores daquela unidade.
 """
-import datetime as dt, json, os, re, sys, urllib.request
+import datetime as dt, json, os, re, sys, urllib.error, urllib.parse, urllib.request
 
 UNITS = {
     'estudio': ['ICAL_ESTUDIO_AIRBNB', 'ICAL_ESTUDIO_BOOKING'],
@@ -15,10 +15,22 @@ OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'disponibil
 DAYS_AHEAD = 180
 
 
+UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
+
+
+def clean(url):
+    # tira espaços, aspas e quebras de linha que às vezes vêm ao colar o link
+    return url.strip().strip('"\'<>').replace('&amp;', '&').split()[0]
+
+
 def fetch(url):
-    req = urllib.request.Request(url, headers={'User-Agent': 'tremdobotanico-calendario/1.0'})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return r.read().decode('utf-8', 'replace')
+    req = urllib.request.Request(clean(url), headers={'User-Agent': UA, 'Accept': 'text/calendar,*/*'})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return r.read().decode('utf-8', 'replace')
+    except urllib.error.HTTPError as e:
+        body = e.read()[:200].decode('utf-8', 'replace').replace('\n', ' ')
+        raise RuntimeError(f'HTTP {e.code} em {urllib.parse.urlsplit(clean(url)).netloc}: {body}')
 
 
 def parse_date(v):
@@ -68,8 +80,13 @@ def main():
             continue
         try:
             nights = set()
-            for u in urls:
-                nights |= busy_nights(fetch(u))
+            for name, u in zip([s for s in secrets if os.environ.get(s, '').strip()], urls):
+                try:
+                    got = busy_nights(fetch(u))
+                except Exception as exc:
+                    raise RuntimeError(f'{name}: {exc}')
+                print(f'OK {name}: {len(got)} noites ocupadas no calendário')
+                nights |= got
             busy = sorted(d.isoformat() for d in nights if today <= d <= limit)
             units[unit] = {'busy': busy, 'checked': dt.datetime.now(dt.timezone.utc).isoformat(timespec='minutes')}
         except Exception as exc:
