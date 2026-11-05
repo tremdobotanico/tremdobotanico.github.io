@@ -29,8 +29,10 @@ def fetch(url):
         with urllib.request.urlopen(req, timeout=30) as r:
             return r.read().decode('utf-8', 'replace')
     except urllib.error.HTTPError as e:
-        body = e.read()[:200].decode('utf-8', 'replace').replace('\n', ' ')
-        raise RuntimeError(f'HTTP {e.code} em {urllib.parse.urlsplit(clean(url)).netloc}: {body}')
+        body = re.sub(r'<[^>]+>', ' ', e.read()[:800].decode('utf-8', 'replace'))
+        body = ' '.join(body.split())[:300]
+        u = urllib.parse.urlsplit(clean(url))
+        raise RuntimeError(f'HTTP {e.code} em {u.netloc}{u.path} (tamanho do link {len(clean(url))}, caracteres estranhos: {[c for c in clean(url) if ord(c) > 126 or ord(c) < 33]}): {body}')
 
 
 def parse_date(v):
@@ -80,13 +82,17 @@ def main():
             continue
         try:
             nights = set()
+            errs = []
             for name, u in zip([s for s in secrets if os.environ.get(s, '').strip()], urls):
                 try:
                     got = busy_nights(fetch(u))
                 except Exception as exc:
-                    raise RuntimeError(f'{name}: {exc}')
+                    errs.append(f'{name}: {exc}')
+                    continue
                 print(f'OK {name}: {len(got)} noites ocupadas no calendário')
                 nights |= got
+            if errs:
+                raise RuntimeError(' | '.join(errs))
             busy = sorted(d.isoformat() for d in nights if today <= d <= limit)
             units[unit] = {'busy': busy, 'checked': dt.datetime.now(dt.timezone.utc).isoformat(timespec='minutes')}
         except Exception as exc:
