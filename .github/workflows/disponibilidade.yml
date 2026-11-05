@@ -1,0 +1,38 @@
+name: Disponibilidade
+
+on:
+  schedule:
+    - cron: '17 */3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: disponibilidade
+  cancel-in-progress: false
+
+jobs:
+  atualizar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Ler calendários do Airbnb e do Booking
+        env:
+          ICAL_ESTUDIO_AIRBNB: ${{ secrets.ICAL_ESTUDIO_AIRBNB }}
+          ICAL_ESTUDIO_BOOKING: ${{ secrets.ICAL_ESTUDIO_BOOKING }}
+          ICAL_KITNET_AIRBNB: ${{ secrets.ICAL_KITNET_AIRBNB }}
+          ICAL_KITNET_BOOKING: ${{ secrets.ICAL_KITNET_BOOKING }}
+        run: python3 scripts/disponibilidade.py
+      - name: Publicar se mudou
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add disponibilidade.json
+          if git diff --cached --quiet; then echo "Sem mudanças"; exit 0; fi
+          git commit -m "Atualiza disponibilidade"
+          git pull --rebase origin main
+          git push origin HEAD:main
